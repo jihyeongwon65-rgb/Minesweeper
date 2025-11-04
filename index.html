@@ -23,23 +23,27 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 30px;
+    padding: 20px;
+    user-select: none;
   }
-  h1 { margin-bottom: 5px; }
-  .subtitle { color: #777; margin-bottom: 20px; }
+  h1 { margin-bottom: 5px; text-align: center; }
+  .subtitle { color: #777; margin-bottom: 20px; text-align: center; }
   .controls {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   select, button {
     background: #ffd86b;
     border: none;
     border-radius: 8px;
-    padding: 8px 14px;
+    padding: 10px 14px;
     cursor: pointer;
     box-shadow: var(--shadow);
     font-weight: bold;
+    font-size: 15px;
   }
   select:hover, button:hover {
     background: #ffeaa0;
@@ -49,11 +53,12 @@
     display: grid;
     border: 2px solid var(--border);
     box-shadow: var(--shadow);
+    touch-action: manipulation;
   }
 
   .cell {
-    width: 28px;
-    height: 28px;
+    width: min(8vw, 40px);
+    height: min(8vw, 40px);
     background: var(--cell);
     border: 1px solid var(--border);
     display: flex;
@@ -61,23 +66,24 @@
     justify-content: center;
     font-weight: bold;
     cursor: pointer;
-    user-select: none;
-    font-size: 14px;
+    font-size: clamp(10px, 3vw, 16px);
     transition: background 0.2s;
   }
 
   .cell.open { background: #e9f7ef; cursor: default; }
   .cell.mine { background: var(--mine); color: white; }
   .cell.flag { background: var(--flag); }
+
   #status {
     margin-top: 15px;
     font-weight: bold;
+    text-align: center;
   }
 </style>
 </head>
 <body>
   <h1>지뢰찾기 💣</h1>
-  <div class="subtitle">모든 지뢰를 피해서 칸을 열어보세요!</div>
+  <div class="subtitle">아이패드에서도 터치로 즐기는 지뢰찾기!</div>
 
   <div class="controls">
     <select id="difficulty">
@@ -141,8 +147,8 @@ function setup(difficulty) {
 
 function drawBoard() {
   boardEl.innerHTML = '';
-  boardEl.style.gridTemplateColumns = `repeat(${size}, 28px)`;
-  boardEl.style.gridTemplateRows = `repeat(${size}, 28px)`;
+  boardEl.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+  boardEl.style.gridTemplateRows = `repeat(${size}, 1fr)`;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -153,6 +159,10 @@ function drawBoard() {
       boardEl.appendChild(cell);
     }
   }
+}
+
+function getCell(x, y) {
+  return boardEl.children[y * size + x];
 }
 
 function openCell(x, y) {
@@ -167,52 +177,22 @@ function openCell(x, y) {
     cell.textContent = '💣';
     gameOver = true;
     showAllMines();
-    statusEl.textContent = '💥 지뢰를 밟았어요! 게임 종료!';
+    statusEl.textContent = '💥 지뢰를 밟았어요!';
     return;
   }
 
   if (board[y][x] > 0) {
     cell.textContent = board[y][x];
-    return;
-  }
-
-  // 주변 자동 열기
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      const ny = y + dy, nx = x + dx;
-      if (ny >= 0 && ny < size && nx >= 0 && nx < size) openCell(nx, ny);
+  } else {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny >= 0 && ny < size && nx >= 0 && nx < size) openCell(nx, ny);
+      }
     }
   }
-
   checkWin();
 }
-
-function getCell(x, y) {
-  return boardEl.children[y * size + x];
-}
-
-boardEl.addEventListener('click', e => {
-  if (!e.target.classList.contains('cell')) return;
-  const x = +e.target.dataset.x;
-  const y = +e.target.dataset.y;
-  openCell(x, y);
-});
-
-boardEl.addEventListener('contextmenu', e => {
-  e.preventDefault();
-  if (!e.target.classList.contains('cell') || gameOver) return;
-  const x = +e.target.dataset.x;
-  const y = +e.target.dataset.y;
-  const cell = e.target;
-
-  if (!cell.classList.contains('flag')) {
-    cell.classList.add('flag');
-    cell.textContent = '🚩';
-  } else {
-    cell.classList.remove('flag');
-    cell.textContent = '';
-  }
-});
 
 function showAllMines() {
   for (let y = 0; y < size; y++) {
@@ -234,8 +214,53 @@ function checkWin() {
     }
   }
   if (unopened === 0 && !gameOver) {
-    statusEl.textContent = '🎉 축하합니다! 승리했어요!';
+    statusEl.textContent = '🎉 축하합니다! 승리!';
     gameOver = true;
+  }
+}
+
+// 📱 터치 컨트롤 (탭 = 열기 / 두 번 탭 = 깃발)
+let lastTap = 0;
+boardEl.addEventListener('touchend', e => {
+  const target = e.target.closest('.cell');
+  if (!target || gameOver) return;
+
+  const now = Date.now();
+  const x = +target.dataset.x, y = +target.dataset.y;
+
+  if (now - lastTap < 300) {
+    toggleFlag(target, x, y); // 더블탭 = 깃발
+  } else {
+    openCell(x, y);
+  }
+  lastTap = now;
+});
+
+// 🖱️ 마우스도 가능 (클릭 = 열기, 우클릭 = 깃발)
+boardEl.addEventListener('click', e => {
+  const cell = e.target;
+  if (!cell.classList.contains('cell')) return;
+  const x = +cell.dataset.x;
+  const y = +cell.dataset.y;
+  openCell(x, y);
+});
+
+boardEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const cell = e.target;
+  if (!cell.classList.contains('cell') || gameOver) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  toggleFlag(cell, x, y);
+});
+
+function toggleFlag(cell, x, y) {
+  if (revealed[y][x]) return;
+  if (!cell.classList.contains('flag')) {
+    cell.classList.add('flag');
+    cell.textContent = '🚩';
+  } else {
+    cell.classList.remove('flag');
+    cell.textContent = '';
   }
 }
 

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>지뢰찾기 💣</title>
+<style>
+  :root {
+    --bg: #fffdf8;
+    --cell: #fefefe;
+    --border: #e0ddd5;
+    --mine: #ff9b9b;
+    --flag: #ffd36b;
+    --text: #333;
+    --shadow: 0 3px 10px rgba(0,0,0,0.05);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Noto Sans KR", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px;
+  }
+  h1 { margin-bottom: 5px; }
+  .subtitle { color: #777; margin-bottom: 20px; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  select, button {
+    background: #ffd86b;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    font-weight: bold;
+  }
+  select:hover, button:hover {
+    background: #ffeaa0;
+  }
+
+  #board {
+    display: grid;
+    border: 2px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+
+  .cell {
+    width: 28px;
+    height: 28px;
+    background: var(--cell);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    cursor: pointer;
+    user-select: none;
+    font-size: 14px;
+    transition: background 0.2s;
+  }
+
+  .cell.open { background: #e9f7ef; cursor: default; }
+  .cell.mine { background: var(--mine); color: white; }
+  .cell.flag { background: var(--flag); }
+  #status {
+    margin-top: 15px;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+  <h1>지뢰찾기 💣</h1>
+  <div class="subtitle">모든 지뢰를 피해서 칸을 열어보세요!</div>
+
+  <div class="controls">
+    <select id="difficulty">
+      <option value="easy">난이도: 하</option>
+      <option value="medium">난이도: 중</option>
+      <option value="hard">난이도: 상</option>
+    </select>
+    <button id="newGame">새 게임</button>
+  </div>
+
+  <div id="board"></div>
+  <div id="status"></div>
+
+<script>
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const difficultyEl = document.getElementById('difficulty');
+let size = 8, mineCount = 10;
+let board = [];
+let revealed = [];
+let gameOver = false;
+
+function setup(difficulty) {
+  if (difficulty === 'easy') { size = 8; mineCount = 10; }
+  else if (difficulty === 'medium') { size = 12; mineCount = 20; }
+  else { size = 16; mineCount = 40; }
+
+  gameOver = false;
+  statusEl.textContent = '';
+
+  // 지뢰 배치
+  board = Array.from({ length: size }, () => Array(size).fill(0));
+  revealed = Array.from({ length: size }, () => Array(size).fill(false));
+  let minesPlaced = 0;
+  while (minesPlaced < mineCount) {
+    let x = Math.floor(Math.random() * size);
+    let y = Math.floor(Math.random() * size);
+    if (board[y][x] !== 'M') {
+      board[y][x] = 'M';
+      minesPlaced++;
+    }
+  }
+
+  // 숫자 채우기
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (board[y][x] === 'M') continue;
+      let count = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = y + dy, nx = x + dx;
+          if (ny >= 0 && ny < size && nx >= 0 && nx < size && board[ny][nx] === 'M') count++;
+        }
+      }
+      board[y][x] = count;
+    }
+  }
+
+  drawBoard();
+}
+
+function drawBoard() {
+  boardEl.innerHTML = '';
+  boardEl.style.gridTemplateColumns = `repeat(${size}, 28px)`;
+  boardEl.style.gridTemplateRows = `repeat(${size}, 28px)`;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.x = x;
+      cell.dataset.y = y;
+      boardEl.appendChild(cell);
+    }
+  }
+}
+
+function openCell(x, y) {
+  if (gameOver || revealed[y][x]) return;
+  const cell = getCell(x, y);
+  revealed[y][x] = true;
+  cell.classList.add('open');
+  cell.classList.remove('flag');
+
+  if (board[y][x] === 'M') {
+    cell.classList.add('mine');
+    cell.textContent = '💣';
+    gameOver = true;
+    showAllMines();
+    statusEl.textContent = '💥 지뢰를 밟았어요! 게임 종료!';
+    return;
+  }
+
+  if (board[y][x] > 0) {
+    cell.textContent = board[y][x];
+    return;
+  }
+
+  // 주변 자동 열기
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const ny = y + dy, nx = x + dx;
+      if (ny >= 0 && ny < size && nx >= 0 && nx < size) openCell(nx, ny);
+    }
+  }
+
+  checkWin();
+}
+
+function getCell(x, y) {
+  return boardEl.children[y * size + x];
+}
+
+boardEl.addEventListener('click', e => {
+  if (!e.target.classList.contains('cell')) return;
+  const x = +e.target.dataset.x;
+  const y = +e.target.dataset.y;
+  openCell(x, y);
+});
+
+boardEl.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (!e.target.classList.contains('cell') || gameOver) return;
+  const x = +e.target.dataset.x;
+  const y = +e.target.dataset.y;
+  const cell = e.target;
+
+  if (!cell.classList.contains('flag')) {
+    cell.classList.add('flag');
+    cell.textContent = '🚩';
+  } else {
+    cell.classList.remove('flag');
+    cell.textContent = '';
+  }
+});
+
+function showAllMines() {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const cell = getCell(x, y);
+      if (board[y][x] === 'M') {
+        cell.textContent = '💣';
+        cell.classList.add('mine');
+      }
+    }
+  }
+}
+
+function checkWin() {
+  let unopened = 0;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (!revealed[y][x] && board[y][x] !== 'M') unopened++;
+    }
+  }
+  if (unopened === 0 && !gameOver) {
+    statusEl.textContent = '🎉 축하합니다! 승리했어요!';
+    gameOver = true;
+  }
+}
+
+document.getElementById('newGame').addEventListener('click', () => {
+  setup(difficultyEl.value);
+});
+
+setup('easy');
+</script>
+</body>
+</html>
